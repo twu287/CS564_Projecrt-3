@@ -129,6 +129,22 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 
 }
 
+const bool checkIfValid(int highVal, int lowVal, const Operator highOperator,
+ 						const Operator lowOperator, int keyValue){
+	if (highOperator == LT && lowOperator == GT){
+		return keyValue < highVal && keyValue > lowVal;
+	} 
+	else if (highOperator == LTE && lowOperator == GTE){
+		return keyValue <= highVal && keyValue >= lowVal;
+	}
+	else if (highOperator == LT && lowOperator == GTE){
+		return keyValue < highVal && keyValue >= lowVal;
+	}
+	else {
+		return keyValue <= highVal && keyValue > lowVal;
+	}
+}
+
 // -----------------------------------------------------------------------------
 // BTreeIndex::startScan
 // -----------------------------------------------------------------------------
@@ -136,27 +152,137 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 void BTreeIndex::startScan(const void* lowValParm,
 				   const Operator lowOpParm,
 				   const void* highValParm,
-				   const Operator highOpParm)
-{
+				   const Operator highOpParm){
+	if (scanExecuting){
+		endScan();
+	}
+	if ((lowOpParm != GT && lowOpParm != GTE) || (highOpParm != LT && highOpParm != LTE)){
+		throw BadOpcodesException();
+	}
+	lowValInt = *((int*)lowValParm);
+	highValInt = *((int*)highValParm);
+	lowOp = lowOpParm;
+	highOp = highOpParm;
+	if (lowValInt > highValInt){
+		throw BadScanrangeException();
+	}
+	currentPageNum = rootPageNum;
+	bufMgr->readPage(file, currentPageNum, currentPageData);
 
+	//if root is not at leaf position
+	if (orig_root != rootPageNum){
+		NonLeafNodeInt* curPointer = (NonLeafNodeInt*) currentPageData;
+		bool nextIsLeaf = false;
+		while(!nextIsLeaf){
+			curPointer = (NonLeafNodeInt*) currentPageData;
+			if (curPointer->level == 1){
+				nextIsLeaf = true;
+			}
+			int i;
+			for (i = nodeOccupancy; i > 0; i--){
+				if (curPointer->keyArray[i-1] < lowValInt){
+					break;
+				}
+			}
+			bufMgr->unPinPage(file, currentPageNum, false);
+			//find nextpage at below level
+			currentPageNum = curPointer->pageNoArray[i];
+			bufMgr->readPage(file, currentPageNum, currentPageData);
+		}
+	}
+
+	bool foundSmallest = false;
+	//last rid in this array (rid array is not full)
+	bool noVal = false; 
+	while(!foundSmallest){
+		//這只有看小於lower bound的page是空的,但旁邊的page不用看嗎？
+		LeafNodeInt* curNode = (LeafNodeInt*) currentPageData;
+		if (curNode->ridArray[0].page_number == 0){
+			bufMgr->unPinPage(file, currentPageNum, false);
+			throw NoSuchKeyFoundException();
+		}
+		for (int i = 0; i < leafOccupancy; i++){
+			if (noVal){
+				break;
+			}
+			//iterate to last element in rid array
+			if (i < leafOccupancy - 1 && curNode->ridArray[i + 1].page_number == 0){
+				noVal == true;
+			}
+			int keyValue = curNode->keyArray[i];
+			if (checkIfValid(highValInt, lowValInt, highOp, lowOp, keyValue)){
+				foundSmallest - true;
+				nextEntry = i;
+				scanExecuting = true;
+				break;
+			}
+			else if ((highOpParm == LTE && !(keyValue <= highValInt))){
+				bufMgr->unPinPage(file, currentPageNum, false);
+				throw NoSuchKeyFoundException();
+			}
+			else if ((highOpParm == LT && !(keyValue < highValInt))){
+				bufMgr->unPinPage(file, currentPageNum, false);
+				throw NoSuchKeyFoundException();				
+			}
+			// keyValue < lowOpParm -> continue do for loop
+			else{
+				// (1) rid array is full, iterate all and no match 
+				// (2) rid array is not full, iterate all and no match
+				if (i == leafOccupancy - 1 || noVal){
+					bufMgr->unPinPage(file, currentPageNum, false);
+					int sibNo = curNode->rightSibPageNo;
+					if (sibNo == 0){
+						throw NoSuchKeyFoundException();
+					}
+					currentPageNum = sibNo;
+					bufMgr->readPage(file, currentPageNum, currentPageData);
+				}	
+			}
+
+		}
+
+	}
 }
 
 // -----------------------------------------------------------------------------
 // BTreeIndex::scanNext
 // -----------------------------------------------------------------------------
 
-void BTreeIndex::scanNext(RecordId& outRid) 
-{
-
+void BTreeIndex::scanNext(RecordId& outRid) {
+	if (!scanExecuting){
+		throw ScanNotInitializedException();
+	}
+	LeafNodeInt* curNode = (LeafNodeInt*) currentPageData;
+	if (nextEntry == leafOccupancy || curNode->ridArray[nextEntry].page_number == 0){
+		bufMgr->unPinPage(file, currentPageNum, false);
+		if (curNode->rightSibPageNo == 0){
+			throw IndexScanCompletedException();
+		}
+		currentPageNum = curNode->rightSibPageNo;
+		bufMgr->readPage(file, currentPageNum, currentPageData);
+		curNode = (LeafNodeInt*) currentPageData;
+		nextEntry = 0;
+	}
+	int keyValue = curNode->keyArray[nextEntry];
+	if (checkIfValid(highValInt, lowValInt, highOp, lowOp, keyValue)){
+		outRid = curNode->ridArray[nextEntry];
+		nextEntry++;
+	}
+	else {
+		throw IndexScanCompletedException();
+	}
 }
 
 // -----------------------------------------------------------------------------
 // BTreeIndex::endScan
 // -----------------------------------------------------------------------------
 //
-void BTreeIndex::endScan() 
-{
-
+void BTreeIndex::endScan() {
+	if (!scanExecuting){
+		throw ScanNotInitializedException();
+	}
+	bufMgr->unPinPage(file, currentPageNum, false);
+	scanExecuting = false;
 }
 
 }
