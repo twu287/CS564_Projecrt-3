@@ -129,6 +129,52 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 
 }
 
+    /**
+     * To insert an entry into a leaf
+     * @param cur_leaf     leaf node that needs to be inserted into
+     * @param entry        then entry needed to be inserted
+     */
+    const void BTreeIndex::leaf_insert(LeafNodeInt *cur_leaf, RIDKeyPair<int> entry) {
+        // it's empty
+        if (cur_leaf->ridArray[0].page_number == 0) {
+            cur_leaf->keyArray[0] = entry.key;
+            cur_leaf->ridArray[0] = entry.rid;
+        } else {
+            int i = leafOccupancy - 1;
+            while(i >= 0 && (cur_leaf->ridArray[i].page_number == 0)){
+                i--;
+            }
+            for(;i >= 0 && (cur_leaf->keyArray[i] > entry.key);i--) {
+                cur_leaf->keyArray[i+1] = cur_leaf->keyArray[i];
+                cur_leaf->ridArray[i+1] = cur_leaf->ridArray[i];
+            }
+            cur_leaf->keyArray[i+1] = entry.key;
+            cur_leaf->ridArray[i+1] = entry.rid;
+        }
+    }
+
+    /**
+     * To insert an entry into a non leaf
+     * @param nonLeafNodeInt  nonleaf_getNext node that need to be inserted into
+     * @param entry           then entry needed to be inserted
+     *
+     */
+    const void BTreeIndex::nonLeaf_insert(NonLeafNodeInt *cur_nonleaf, PageKeyPair<int> *entry) {
+        int i = nodeOccupancy;
+        while(i >= 0 && (cur_nonleaf->ridArray[i].page_number == 0)){
+            i--;
+        }
+        for(;i > 0 && (cur_nonleaf->keyArray[i - 1] > entry->key); i--) {
+            cur_nonleaf->keyArray[i] = cur_nonleaf->keyArray[i - 1];
+            cur_nonleaf->pageNoArray[i + 1] = cur_nonleaf->pageNoArray[i];
+        }
+
+        cur_nonleaf->keyArray[i] = entry->key;
+        cur_nonleaf->pageNoArray[i + 1] = entry->pageNo;
+    }	
+	
+	
+	
 const bool checkIfValid(int highVal, int lowVal, const Operator highOperator,
  						const Operator lowOperator, int keyValue){
 	if (highOperator == LT && lowOperator == GT){
