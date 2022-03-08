@@ -290,11 +290,8 @@ class BTreeIndex {
    * High Operator. Can only be LT(<) or LTE(<=).
    */
 	Operator	highOp;
-  /**
-   * Original root number
-   */
-  	PageId orig_root;
 
+  PageId initialRootPageNum;
 	
  public:
 
@@ -368,6 +365,23 @@ class BTreeIndex {
 	**/
 	void endScan();
 	
+  const bool checkKey(int lowVal, const Operator lowOp, int highVal, const Operator highOp, int key);
+
+  const void insertNonLeaf(NonLeafNodeInt *nonleaf, PageKeyPair<int> *entry);
+
+  const void insertLeaf(LeafNodeInt *leaf, RIDKeyPair<int> entry);
+
+  const void updateRoot(PageId firstPageInRoot, PageKeyPair<int> *newchildEntry);
+
+  const void splitLeaf(LeafNodeInt *leaf, PageId leafPageNum, PageKeyPair<int> *&newchildEntry, const RIDKeyPair<int> dataEntry);
+
+  const void splitNonLeaf(NonLeafNodeInt *oldNode, PageId oldPageNumber, PageKeyPair<int> *&newEntry);
+
+  const void insert(Page *curPage, PageId curPageNum, bool nodeIsLeaf, const RIDKeyPair<int> dataEntry, PageKeyPair<int> *&newchildEntry);
+
+  const void findNextNonLeafNode(NonLeafNodeInt *curNode, PageId &nextNodeNum, int key);
+
+  const bool checkIfValid(int highVal, int lowVal, const Operator highOperator, const Operator lowOperator, int keyValue);
 };
 
 }
