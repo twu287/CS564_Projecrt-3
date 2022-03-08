@@ -19,6 +19,8 @@
 #include "exceptions/bad_opcodes_exception.h"
 #include "exceptions/scan_not_initialized_exception.h"
 #include "exceptions/end_of_file_exception.h"
+#include <exceptions/page_pinned_exception.h>
+#include <exceptions/page_not_pinned_exception.h>
 
 #define checkPassFail(a, b) 																				\
 {																																		\
@@ -33,7 +35,12 @@
 		exit(1);																												\
 	}																																	\
 }
-
+#define PRINT_ERROR(message) \
+{ \
+    std::cerr << "On Line No:" << __LINE__ << "\n"; \
+    std::cerr << message << "\n"; \
+    exit(1); \
+}
 using namespace badgerdb;
 
 // -----------------------------------------------------------------------------
@@ -66,12 +73,17 @@ BufMgr * bufMgr = new BufMgr(100);
 void createRelationForward();
 void createRelationBackward();
 void createRelationRandom();
+void createRelationFixSize(int size);
+void createRelationForwardWithSize(int size);
 void intTests();
+void testsEmpty();
 int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator highOp);
 void indexTests();
 void test1();
 void test2();
 void test3();
+void test4();
+void test5();
 void errorTests();
 void deleteRelation();
 
@@ -137,6 +149,10 @@ int main(int argc, char **argv)
 	test1();
 	test2();
 	test3();
+	//test relation size is 0 and we need to check it is empty
+	test4();
+
+
 	errorTests();
 
 	delete bufMgr;
@@ -177,9 +193,31 @@ void test3()
 	deleteRelation();
 }
 
+
+void test4() {
+    // Create empty tree
+    std::cout << "test4--------------------" << std::endl;
+    std::cout << "set size of relation is 0 and check it is empty" << std::endl;
+    createRelationFixSize(0);
+    testsEmpty();
+    deleteRelation();
+}
+
+void test5()
+{
+  // Create a relation with tuple valued 0 to spesific size in fowarding order
+  std::cout << "---------------------" << std::endl;
+	std::cout << "extra test for split in non-leaf node" << std::endl;
+	createRelationForwardWithSize((1023+1)*(682/2)+ 100);
+	indexTests();
+	deleteRelation();
+}
+
 // -----------------------------------------------------------------------------
 // createRelationForward
 // -----------------------------------------------------------------------------
+
+
 
 void createRelationForward()
 {
@@ -338,6 +376,59 @@ void createRelationRandom()
   
 	file1->writePage(new_page_number, new_page);
 }
+void createRelationFixSize(int size) {
+    // destroy any old copies of relation file
+    try {
+        File::remove(relationName);
+    }
+    catch (FileNotFoundException e) {
+    }
+	
+    file1 = new PageFile(relationName, true);
+
+    // initialize all of record1.s to keep purify happy
+    memset(record1.s, ' ', sizeof(record1.s));
+    PageId new_page_number;
+    Page new_page = file1->allocatePage(new_page_number);
+
+    // insert records in random order
+
+    std::vector<int> intvec(relationSize);
+    for (int i = 0; i < size; i++) {
+        intvec[i] = i;
+    }
+
+    long pos;
+    int val;
+
+
+    for (int i = 0; i < size; i++) {
+        pos = random() % (size - i);
+        val = intvec[pos];
+        sprintf(record1.s, "%05d string record", val);
+        record1.i = val;
+        record1.d = val;
+
+        std::string new_data(reinterpret_cast<char *>(&record1), sizeof(RECORD));
+
+        while (1) {
+            try {
+                new_page.insertRecord(new_data);
+                break;
+            }
+            catch (InsufficientSpaceException e) {
+                file1->writePage(new_page_number, new_page);
+                new_page = file1->allocatePage(new_page_number);
+            }
+        }
+
+        int temp = intvec[size - 1 - i];
+        intvec[size - 1 - i] = intvec[pos];
+        intvec[pos] = temp;
+    }
+
+    file1->writePage(new_page_number, new_page);
+}
 
 // -----------------------------------------------------------------------------
 // indexTests
@@ -374,6 +465,20 @@ void intTests()
 	checkPassFail(intScan(&index,3000,GTE,4000,LT), 1000)
 }
 
+void testsEmpty() {
+    std::cout << "Create a B+ Tree index on the integer field" << std::endl;
+    BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple, i), INTEGER);
+
+    // run some tests
+    checkPassFail(intScan(&index, 1, GT, 25, LT), 0)
+    checkPassFail(intScan(&index, 5, GT, 40, LT), 0)
+    checkPassFail(intScan(&index, 4, GT, 15, LT), 0)
+    checkPassFail(intScan(&index, 100, GTE, 1000, LTE), 0)
+    checkPassFail(intScan(&index, 0, GT, 1, LT), 0)
+    checkPassFail(intScan(&index, 200, GT, 400, LT), 0)
+    checkPassFail(intScan(&index, 309, GTE, 409, LT), 0)
+
+}
 int intScan(BTreeIndex * index, int lowVal, Operator lowOp, int highVal, Operator highOp)
 {
   RecordId scanRid;
