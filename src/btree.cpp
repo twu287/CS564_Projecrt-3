@@ -149,7 +149,10 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
   Page* root;
   bufMgr->readPage(file, rootPageNum, root);
   PageKeyPair<int> *newEntry = nullptr;
-  insert(root, rootPageNum, initialRootPageNum == rootPageNum ? true : false, dataEntry, newEntry);
+  if (initialRootPageNum == rootPageNum) 
+    insert(root, rootPageNum, true, dataEntry, newEntry);
+  else
+    insert(root, rootPageNum, false, dataEntry, newEntry);
 }
 
 /**
@@ -176,21 +179,21 @@ const void BTreeIndex::findNextNonLeafNode(NonLeafNodeInt *curNode, PageId &next
  * function to insert index entry to index file
  * @param curPage     current page
  * @param curPageNum  current Page PageId
- * @param nodeIsLeaf  check if current page is a leaf node
+ * @param isLeafNode  check if current page is a leaf node
  * @param dataEntry   entry which needs to be inserted
  * @param newEntry    entry need to be moved up after splited, would be null if split is not necessary
 */
-const void BTreeIndex::insert(Page *curPage, PageId curPageNum, bool nodeIsLeaf, const RIDKeyPair<int> dataEntry, PageKeyPair<int> *&newEntry)
+const void BTreeIndex::insert(Page *curPage, PageId curPageNum, bool isLeafNode, const RIDKeyPair<int> dataEntry, PageKeyPair<int> *&newEntry)
 {
-  if (!nodeIsLeaf)
+  if (!isLeafNode)
   {
     NonLeafNodeInt *curNode = (NonLeafNodeInt *)curPage;
     Page *nextPage;
     PageId nextNodeNum;
     findNextNonLeafNode(curNode, nextNodeNum, dataEntry.key);
     bufMgr->readPage(file, nextNodeNum, nextPage);
-    nodeIsLeaf = curNode->level == 1;
-    insert(nextPage, nextNodeNum, nodeIsLeaf, dataEntry, newEntry);
+    isLeafNode = curNode->level == 1;
+    insert(nextPage, nextNodeNum, isLeafNode, dataEntry, newEntry);
     
     if (newEntry == nullptr)
     {
@@ -429,10 +432,14 @@ const void BTreeIndex::updateRootNode(PageId firstPage, PageKeyPair<int> *newEnt
 // BTreeIndex::startScan
 // -----------------------------------------------------------------------------
 
-void BTreeIndex::startScan(const void* lowValParm,
-           const Operator lowOpParm,
-           const void* highValParm,
-           const Operator highOpParm)
+/**
+ * function to start a sacn from root node to leaf node which contains the first record that satisfies the search criteria
+ * @param lowVal  Low value of range
+ * @param lowOp   Low operator(GT/GTE)
+ * @param highVal High value of range
+ * @param highOp  High operator(LT/LTE)
+**/
+void BTreeIndex::startScan(const void* lowValParm, const Operator lowOpParm, const void* highValParm, const Operator highOpParm)
 {
   
   if (scanExecuting){
@@ -517,9 +524,7 @@ void BTreeIndex::startScan(const void* lowValParm,
           bufMgr->readPage(file, currentPageNum, currentPageData);
         } 
       }
-
     }
-
   }
 }
 
@@ -527,6 +532,10 @@ void BTreeIndex::startScan(const void* lowValParm,
 // BTreeIndex::scanNext
 // -----------------------------------------------------------------------------
 
+/**
+  * function to fetch the next record which is next to the entry that matches the scan criteria
+  * @param outRid RecordId next to the record that satisfies the scan criteria
+**/
 void BTreeIndex::scanNext(RecordId& outRid) 
 {
   if (!scanExecuting){
@@ -558,6 +567,9 @@ void BTreeIndex::scanNext(RecordId& outRid)
 // -----------------------------------------------------------------------------
 //
 
+/**
+  * function to end the current scan
+**/
 void BTreeIndex::endScan() 
 {
   if (!scanExecuting){
@@ -568,13 +580,13 @@ void BTreeIndex::endScan()
 }
 
 /**
-  * Helper function to check if the key is satisfies
-  * @param lowVal   Low value of range, pointer to integer / double / char string
-  * @param lowOp    Low operator (GT/GTE)
-  * @param highVal  High value of range, pointer to integer / double / char string
-  * @param highOp   High operator (LT/LTE)
-  * @param val      Value of the key
-  * @return True if satisfies False if not
+  * function to check if the key matches search criteria
+  * @param lowVal   Low value of range
+  * @param lowOp    Low operator(GT/GTE)
+  * @param highVal  High value of range
+  * @param highOp   High operator(LT/LTE)
+  * @param val      key value
+  * @return         true if satisfies falses otherwise
   *
 **/
 
