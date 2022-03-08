@@ -83,7 +83,6 @@ void test1();
 void test2();
 void test3();
 void test4();
-void test5();
 void errorTests();
 void deleteRelation();
 
@@ -201,16 +200,6 @@ void test4() {
     createRelationFixSize(0);
     testsEmpty();
     deleteRelation();
-}
-
-void test5()
-{
-  // Create a relation with tuple valued 0 to spesific size in fowarding order
-  std::cout << "---------------------" << std::endl;
-	std::cout << "extra test for split in non-leaf node" << std::endl;
-	createRelationForwardWithSize((1023+1)*(682/2)+ 100);
-	indexTests();
-	deleteRelation();
 }
 
 // -----------------------------------------------------------------------------
