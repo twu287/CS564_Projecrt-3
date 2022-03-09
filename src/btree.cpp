@@ -142,18 +142,22 @@ BTreeIndex::~BTreeIndex()
  * @param key key to be inserted
  * @param rid rid to be inserted
  */
-void BTreeIndex::insertEntry(const void *key, const RecordId rid) 
-{
-  RIDKeyPair<int> dataEntry;
-  dataEntry.set(rid, *((int *)key));
-  Page* root;
-  bufMgr->readPage(file, rootPageNum, root);
-  PageKeyPair<int> *newEntry = nullptr;
-  if (initialRootPageNum == rootPageNum) 
-    insert(root, rootPageNum, true, dataEntry, newEntry);
-  else
-    insert(root, rootPageNum, false, dataEntry, newEntry);
-}
+	void BTreeIndex::insertEntry(const void *k, const RecordId rid)
+	{
+		RIDKeyPair<int> de;
+		de.set(rid, *((int *)k));
+		Page *r;
+		bufMgr->readPage(file, rootPageNum, r);
+		PageKeyPair<int> *nce = nullptr;
+		if (initialRootPageNum == rootPageNum)
+		{
+			insert(r, rootPageNum, true, de, nce);
+		}
+		else
+		{
+			insert(r, rootPageNum, false, de, nce);
+		}
+	}
 
 /**
  * function to find the next level by the key 
@@ -161,19 +165,24 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
  * @param nextNodenum   the next level pageid
  * @param key           key used to check
 */
-const void BTreeIndex::findNextNonLeafNode(NonLeafNodeInt *curNode, PageId &nextNodeNum, int key)
-{
-  int i = nodeOccupancy;
-  while(i >= 0 && (curNode->pageNoArray[i] == 0))
-  {
-    i--;
-  }
-  while(i > 0 && (curNode->keyArray[i-1] >= key))
-  {
-    i--;
-  }
-  nextNodeNum = curNode->pageNoArray[i];
-}
+	const void BTreeIndex::findNextNonLeafNode(NonLeafNodeInt *curNode, PageId &nextNodeNum, int key)
+	{
+		int counter = nodeOccupancy;
+		for(int i = counter; i >= 0; i--) {
+			if(curNode->pageNoArray[i] != 0) {
+				break;
+			}
+			counter--;
+		}
+
+		for(int i = counter; i > 0; i--) {
+			if(curNode->keyArray[i - 1] < key) {
+				break;
+			}
+			counter--;
+		}
+		nextNodeNum = curNode->pageNoArray[counter];
+	}
 
 /**
  * function to insert index entry to index file
@@ -183,53 +192,60 @@ const void BTreeIndex::findNextNonLeafNode(NonLeafNodeInt *curNode, PageId &next
  * @param dataEntry   entry which needs to be inserted
  * @param newEntry    entry need to be moved up after splited, would be null if split is not necessary
 */
-const void BTreeIndex::insert(Page *curPage, PageId curPageNum, bool isLeafNode, const RIDKeyPair<int> dataEntry, PageKeyPair<int> *&newEntry)
-{
-  if (!isLeafNode)
-  {
-    NonLeafNodeInt *curNode = (NonLeafNodeInt *)curPage;
-    Page *nextPage;
-    PageId nextNodeNum;
-    findNextNonLeafNode(curNode, nextNodeNum, dataEntry.key);
-    bufMgr->readPage(file, nextNodeNum, nextPage);
-    isLeafNode = curNode->level == 1;
-    insert(nextPage, nextNodeNum, isLeafNode, dataEntry, newEntry);
-    
-    if (newEntry == nullptr)
-    {
-      bufMgr->unPinPage(file, curPageNum, false);
-    }
-    else
-    { 
-      if (curNode->pageNoArray[nodeOccupancy] == 0)
-      {
-        // insert new entry to curpage
-        insertNonLeafNode(curNode, newEntry);
-        newEntry = nullptr;
-        bufMgr->unPinPage(file, curPageNum, true);
-      }
-      else
-      {
-        splitNonLeafNode(curNode, curPageNum, newEntry);
-      }
-    }
-  }
-  else
-  {
-    LeafNodeInt *leaf = (LeafNodeInt *)curPage;
-    // page is not full
-    if (leaf->ridArray[leafOccupancy - 1].page_number == 0)
-    {
-      insertLeafNode(leaf, dataEntry);
-      bufMgr->unPinPage(file, curPageNum, true);
-      newEntry = nullptr;
-    }
-    else
-    {
-      splitLeafNode(leaf, curPageNum, newEntry, dataEntry);
-    }
-  }
-}
+const void BTreeIndex::insert(Page *cp, PageId cpn, bool leaf, const RIDKeyPair<int> de, PageKeyPair<int> *&nce)
+	{
+
+		if (leaf)
+		{
+			LeafNodeInt *leaf = (LeafNodeInt *)cp;
+			if (leaf->ridArray[leafOccupancy - 1].page_number == 0)
+			{
+				insertLeafNode(leaf, de);
+				nce = nullptr;
+
+				bufMgr->unPinPage(file, cpn, true);
+			}
+			else
+			{
+				splitLeafNode(leaf, cpn, nce, de);
+			}
+			return;
+		}
+		PageId nextNodeNum;
+		NonLeafNodeInt *curNode = (NonLeafNodeInt *)cp;
+
+		Page *nextPage;
+
+		findNextNonLeafNode(curNode, nextNodeNum, de.key);
+		bufMgr->readPage(file, nextNodeNum, nextPage);
+		if (curNode->level == 1)
+		{
+			leaf = true;
+		}
+		else
+		{
+			leaf = false;
+		}
+		insert(nextPage, nextNodeNum, leaf, de, nce);
+
+		if (nce == nullptr)
+		{
+			bufMgr->unPinPage(file, cpn, false);
+		}
+		else
+		{
+			if (curNode->pageNoArray[nodeOccupancy] == 0)
+			{
+				insertNonLeafNode(curNode, nce);
+				nce = nullptr;
+				bufMgr->unPinPage(file, cpn, true);
+			}
+			else
+			{
+				splitNonLeafNode(curNode, cpn, nce);
+			}
+		}
+	}
 
 /**
  * To insert an entry into a leaf

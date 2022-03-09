@@ -328,7 +328,7 @@ class BTreeIndex {
    * @param key     Key to insert, pointer to integer/double/char string
    * @param rid     Record ID of a record whose entry is getting inserted into the index.
   **/
-  void insertEntry(const void* key, const RecordId rid);
+  void insertEntry(const void* k, const RecordId rid);
 
 
   /**
